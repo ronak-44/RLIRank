@@ -1,7 +1,7 @@
 import math
 from Evaluation import DCG
 from LoadData import import_dataset, import_all
-
+import numpy as np
 
 class Dataset:
     def __init__(self, dataset):
@@ -38,6 +38,16 @@ class Dataset:
     def updateQVEC(self,Q,modified):
         self.QUERY_VEC[Q]=modified
         #print(self.QUERY_VEC)
+
+    def updateRelevance(self,Q,doc):
+        #self.QUERY_DOC_TRUTH[Q][doc] = self.QUERY_DOC_TRUTH[Q][doc]+5
+        if self.QUERY_DOC_TRUTH[Q][doc] == 0:
+            self.QUERY_DOC_TRUTH[Q][doc] = 2
+        else:
+            self.QUERY_DOC_TRUTH[Q][doc]+=2.0/(self.QUERY_DOC_TRUTH[Q][doc])
+
+    def updateIDCG(self,Q):
+        self.MAX_DCG = RecalculateIDCG(Q,self.QUERY_DOC_TRUTH,self.MAX_DCG)
 
 '''
 def transform(dataset, num_features):
@@ -99,10 +109,17 @@ def transform_all(dataset):
     for query in list(all_data):
         QUERY_DOC[query] = list(all_data[query])
         QUERY_DOC_TRUTH[query] = {}
-        QUERY_VEC[query] = [float(0)]*46
+        QUERY_VEC[query] = np.array([float(0)]*46)
+        count=0
         for doc in list(all_data[query]):
+            count+=1
             DOC_REPR[doc] = all_data[query][doc][0]
+            QUERY_VEC[query]+=np.array(DOC_REPR[doc])
             QUERY_DOC_TRUTH[query][doc] = all_data[query][doc][1]
+
+        QUERY_VEC[query] = QUERY_VEC[query]/count
+        #print(QUERY_VEC[query])
+        #print('----------')
 
     #print(QUERY_DOC)
     #example of key value pair 14284: ['GX000-18-157110', 'GX001-88-338181', 'GX013-60-212804', 'GX024-62-1009296', 'GX028-25-924244', 'GX128-54-372176', 'GX244-62-329559', 'GX251-70-782965']
@@ -130,6 +147,27 @@ def transform_all(dataset):
     #14284: [3.0, 3.6309297535714573, 3.6309297535714573, 3.6309297535714573, 3.6309297535714573, 3.6309297535714573, 3.6309297535714573, 3.6309297535714573, 0, 0]
 
     return QUERY_TRAIN, None, QUERY_TEST, QUERY_DOC, QUERY_DOC_TRUTH, DOC_REPR, MAX_DCG, QUERY_VEC
+
+def RecalculateIDCG(query,QUERY_DOC_TRUTH,MAX_DCG):
+
+    #IDCG
+    #MAX_DCG = {}
+    labels = {}
+    MAX_DCG[query] = []
+    labels[query] = []
+    for doc in list(QUERY_DOC_TRUTH[query]):
+        labels[query].append(QUERY_DOC_TRUTH[query][doc])
+    #print(labels)
+    for doc_pos in range(1, 11):
+        if len(labels[query]) >= doc_pos:
+            MAX_DCG[query].append(DCG(sorted(labels[query], reverse=True), doc_pos))
+        else:
+            MAX_DCG[query].append(0)
+
+
+    return MAX_DCG 
+
+
 
 
 def get_reward(t, Y_at):

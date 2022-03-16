@@ -16,7 +16,7 @@ random.seed(4)
 torch.manual_seed(4)
 
 
-def feedback(Q,action_list,action_list2):
+def feedback(Q,action_list,action_list2,data,iter):
     for i,j in enumerate(action_list):
         print(i,'\t',j)
     
@@ -25,22 +25,31 @@ def feedback(Q,action_list,action_list2):
     
     positive=np.zeros(46,dtype=float)
     negative=np.zeros(46,dtype=float)
+
     for i in val.split():
         f[int(i)]=1
+        #print(Q,action_list[int(i)])
+        data.updateRelevance(Q,action_list[int(i)])
 
-    a = action_list2[5]
+    print(data.QUERY_DOC_TRUTH[Q])
+    
+    #print(data.MAX_DCG[Q])
+    data.updateIDCG(Q)
+    #print(data.MAX_DCG[Q])
+
     for i in f:
         if i:
             positive = positive + np.array(action_list2[i][0][:46], dtype=float)
         else:
             negative = negative + np.array(action_list2[i][0][:46], dtype=float)
+    
     n = len(val.split())
     positive = positive/n
-    negative = negative/(len(action_list)-n)
+    negative = negative/(max(0,len(action_list)-n))
     #query=(1-gamma*(b-c))*query + gamma*(b*positive-c*negative)
     query = action_list2[0][0][46:]
-    query = (0.55)*query + 0.9*(0.75*positive-0.25*negative)
-    print(query)
+    query = (1-(0.9**iter)*0.5)*query + (0.9**iter)*(0.75*positive-0.25*negative)
+    #print(query)
     return query
 
 
@@ -62,71 +71,71 @@ def train(model, data, episode_length,epoch):
 
     # For each query in the training set
     for Q in data.getTrain():        
-        #for iter in range(5):
-        dcg_results[Q] = []
+        for iter in range(1):
+            dcg_results[Q] = []
 
-        qvec = data.getQVEC(Q)
-        #print(qvec,'\n')
-        # Initialize state with Total number of documents
-        state = data.getDocQuery()[Q]
-        action_list = []
-        action_list2=[]
-        action_list3 = []
-        episode_reward = 0
-        effective_length = min(episode_length, len(state))
-        #effective_length = len(state)
+            qvec = data.getQVEC(Q)
+            # Initialize state with Total number of documents
+            state = data.getDocQuery()[Q]
+            action_list = []
+            action_list2=[]
+            action_list3 = []
+            episode_reward = 0
+            #effective_length = min(episode_length, len(state))
+            effective_length = len(state)
 
-        for t in range(0, effective_length):
+            for t in range(0, effective_length):
 
-            # Converting the current state into numpy array to make into tensors later
-            observation = [data.getFeatures()[x] for x in state]
-            observation = np.array(observation, dtype=float)
+                # Converting the current state into numpy array to make into tensors later
+                observation = [data.getFeatures()[x] for x in state]
+                observation = np.array(observation, dtype=float)
 
-            qvec_temp = np.array(qvec).reshape(1,46)
+                qvec_temp = np.array(qvec).reshape(1,46)
+                
+                observation = np.concatenate([observation,np.repeat(qvec_temp,observation.shape[0],axis=0)],axis=1)
+
+                # Actor chooses an action (a document at t position)
+                action = model.choose_action(observation,action_list2)
+                
+                # all actions stored in buffer for calculation of DCG scores later
+                action_list.append(state[action])
+                action_list2.append(np.concatenate([np.array(data.getFeatures()[state[action]], dtype=float).reshape(1,46),qvec_temp ],axis=1))
+                #print(action_list2)
+
+                #action_list3.append(data.getFeatures()[state[action]])
+                
+
+                # Get the next state and the reward based on the action
+                state_, reward = update_state(t, Q, state[action], state, data.getTruth())
+
+
+                episode_reward += reward
+                observation_ = [data.getFeatures()[x] for x in state_]
+                observation_ = np.array(observation_, dtype=float)
+
+                if observation_.shape[0] != 0:
+                    observation_ = np.concatenate([observation_,np.repeat(qvec_temp,observation_.shape[0],axis=0)],axis=1)
+
+                # Update agent parameters
+                model.update(observation, reward, observation_, action_list2)
+
+                # Update state
+                state = state_
+
+            epoch_avg_step_reward += episode_reward / effective_length
+            episode_rewards_list.append(episode_reward / effective_length)
             
-            observation = np.concatenate([observation,np.repeat(qvec_temp,observation.shape[0],axis=0)],axis=1)
-
-            # Actor chooses an action (a document at t position)
-            action = model.choose_action(observation,action_list2)
+            if epoch==3:
+                updatedQuery = feedback(Q,action_list,action_list2,data,iter)
+                data.updateQVEC(Q,updatedQuery)
+                #print(data.QUERY_VEC)
             
-            # all actions stored in buffer for calculation of DCG scores later
-            action_list.append(state[action])
-            action_list2.append(np.concatenate([np.array(data.getFeatures()[state[action]], dtype=float).reshape(1,46),qvec_temp ],axis=1))
-            #print(action_list2)
-
-            #action_list3.append(data.getFeatures()[state[action]])
-            
-
-            # Get the next state and the reward based on the action
-            state_, reward = update_state(t, Q, state[action], state, data.getTruth())
-
-
-            episode_reward += reward
-            observation_ = [data.getFeatures()[x] for x in state_]
-            observation_ = np.array(observation_, dtype=float)
-
-            if observation_.shape[0] != 0:
-                observation_ = np.concatenate([observation_,np.repeat(qvec_temp,observation_.shape[0],axis=0)],axis=1)
-
-            # Update agent parameters
-            model.update(observation, reward, observation_, action_list2)
-
-            # Update state
-            state = state_
-
-        epoch_avg_step_reward += episode_reward / effective_length
-        episode_rewards_list.append(episode_reward / effective_length)
-        
-        updatedQuery = feedback(Q,action_list,action_list2)
-        data.updateQVEC(Q,updatedQuery)
-        #print(data.QUERY_VEC)
-        
-        # Update Query DCG results:
-        dcg_results[Q] = validate_individual(data.getTruth()[Q], data.getIDCG()[Q], action_list)
-        dcg_results[Q] = np.round(dcg_results[Q], 4)
+            # Update Query DCG results:
+            dcg_results[Q] = validate_individual(data.getTruth()[Q], data.getIDCG()[Q], action_list)
+            dcg_results[Q] = np.round(dcg_results[Q], 4)
 
         bar.next()
-        print('\n')
+        #print('\n')
 
 
     bar.finish()

@@ -25,8 +25,8 @@ class Actor(nn.Module):
             nn.Linear(1024, n_actions),
             #nn.Softmax(dim=0)
         )
-        self.lstm1 = nn.LSTM(state_dim,8,batch_first=True)
-        self.linear1 = nn.Linear(8, 1)
+        self.lstm1 = nn.LSTM(state_dim,128,batch_first=True)
+        self.linear1 = nn.Linear(128, 1)
         self.linear2 = nn.Linear(512, 256)
         self.linear3 = nn.Linear(256, 128)
         self.linear4 = nn.Linear(128, 16)
