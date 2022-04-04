@@ -15,7 +15,7 @@ np.random.seed(4)
 random.seed(4)
 torch.manual_seed(4)
 
-
+# python main3.py -d ./data/MQ2008/all_0,1,2 -nf 46 -e 200
 def feedback(Q,action_list,action_list2,data,iter):
     for i,j in enumerate(action_list):
         print(i,'\t',j)
@@ -31,7 +31,7 @@ def feedback(Q,action_list,action_list2,data,iter):
         #print(Q,action_list[int(i)])
         data.updateRelevance(Q,action_list[int(i)])
 
-    print(data.QUERY_DOC_TRUTH[Q])
+    #print(data.QUERY_DOC_TRUTH[Q])
     
     #print(data.MAX_DCG[Q])
     data.updateIDCG(Q)
@@ -125,10 +125,10 @@ def train(model, data, episode_length,epoch):
             epoch_avg_step_reward += episode_reward / effective_length
             episode_rewards_list.append(episode_reward / effective_length)
             
-            if epoch==3:
-                updatedQuery = feedback(Q,action_list,action_list2,data,iter)
-                data.updateQVEC(Q,updatedQuery)
-                #print(data.QUERY_VEC)
+            #if epoch==0:
+            #    updatedQuery = feedback(Q,action_list,action_list2,data,iter)
+            #    data.updateQVEC(Q,updatedQuery)
+             
             
             # Update Query DCG results:
             dcg_results[Q] = validate_individual(data.getTruth()[Q], data.getIDCG()[Q], action_list)
